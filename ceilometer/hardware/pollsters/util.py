@@ -19,7 +19,7 @@
 # under the License.
 
 import copy
-
+import datetime
 from oslo.utils import timeutils
 from six.moves.urllib import parse as urlparse
 
@@ -46,7 +46,8 @@ def make_sample_from_host(host_url, name, sample_type, unit, volume,
     extra = extra or {}
     resource_metadata = make_resource_metadata(res_metadata, host_url)
     resource_metadata.update(extra)
-
+    #timestamp=timeutils.isotime()
+   
     res_id = resource_id or extra.get('resource_id') or host_url.hostname
     return sample.Sample(
         name='hardware.' + name,
@@ -56,7 +57,7 @@ def make_sample_from_host(host_url, name, sample_type, unit, volume,
         user_id=user_id or extra.get('user_id'),
         project_id=project_id or extra.get('project_id'),
         resource_id=res_id,
-        timestamp=timeutils.isotime(),
+        timestamp=datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f'),
         resource_metadata=resource_metadata,
         source='hardware',
     )

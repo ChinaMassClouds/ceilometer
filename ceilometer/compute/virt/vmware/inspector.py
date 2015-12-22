@@ -143,6 +143,8 @@ class VsphereInspector(virt_inspector.Inspector):
             vm_moid, mem_counter_id, duration)
         # Stat provided from vSphere is in KB, converting it to MB.
         memory = memory / units.Ki
+        totalMem=self._ops.query_vm_property(vm_moid,"config.hardware.memoryMB")
+        memory = memory /(totalMem*1.0)
         return virt_inspector.MemoryUsageStats(usage=memory)
 
     def inspect_disk_rates(self, instance, duration=None):

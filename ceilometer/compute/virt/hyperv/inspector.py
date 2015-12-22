@@ -19,11 +19,9 @@
 from oslo.config import cfg
 from oslo.utils import units
 
-from ceilometer.compute.pollsters import util
 from ceilometer.compute.virt.hyperv import utilsv2
 from ceilometer.compute.virt import inspector as virt_inspector
 from ceilometer.openstack.common import log
-
 
 CONF = cfg.CONF
 LOG = log.getLogger(__name__)
@@ -41,8 +39,7 @@ class HyperVInspector(virt_inspector.Inspector):
                 name=element_name,
                 UUID=name)
 
-    def inspect_cpus(self, instance):
-        instance_name = util.instance_name(instance)
+    def inspect_cpus(self, instance_name):
         (cpu_clock_used,
          cpu_count, uptime) = self._utils.get_cpu_metrics(instance_name)
         host_cpu_clock, host_cpu_count = self._utils.get_host_cpu_info()
@@ -54,8 +51,7 @@ class HyperVInspector(virt_inspector.Inspector):
 
         return virt_inspector.CPUStats(number=cpu_count, time=cpu_time)
 
-    def inspect_vnics(self, instance):
-        instance_name = util.instance_name(instance)
+    def inspect_vnics(self, instance_name):
         for vnic_metrics in self._utils.get_vnic_metrics(instance_name):
             interface = virt_inspector.Interface(
                 name=vnic_metrics["element_name"],
@@ -71,8 +67,7 @@ class HyperVInspector(virt_inspector.Inspector):
 
             yield (interface, stats)
 
-    def inspect_disks(self, instance):
-        instance_name = util.instance_name(instance)
+    def inspect_disks(self, instance_name):
         for disk_metrics in self._utils.get_disk_metrics(instance_name):
             disk = virt_inspector.Disk(device=disk_metrics['instance_id'])
             stats = virt_inspector.DiskStats(

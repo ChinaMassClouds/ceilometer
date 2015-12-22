@@ -23,9 +23,7 @@ import datetime
 import operator
 
 import mock
-from oslo.config import cfg
 from oslo.utils import timeutils
-import pymongo
 
 import ceilometer
 from ceilometer.alarm.storage import models as alarm_models
@@ -3101,89 +3099,3 @@ class BigIntegerTest(tests_db.TestBase,
         msg = utils.meter_message_from_counter(
             s, self.CONF.publisher.metering_secret)
         self.conn.record_metering_data(msg)
-
-
-class MongoAutoReconnectTest(DBTestBase,
-                             tests_db.MixinTestsWithBackendScenarios):
-    cfg.CONF.set_override('retry_interval', 1, group='database')
-
-    @tests_db.run_with('mongodb')
-    def test_mongo_client(self):
-        if cfg.CONF.database.mongodb_replica_set:
-            self.assertIsInstance(self.conn.conn.conn,
-                                  pymongo.MongoReplicaSetClient)
-        else:
-            self.assertIsInstance(self.conn.conn.conn,
-                                  pymongo.MongoClient)
-
-    @staticmethod
-    def create_side_effect(method, test_exception):
-        def side_effect(*args, **kwargs):
-            if test_exception.pop():
-                raise pymongo.errors.AutoReconnect
-            else:
-                return method(*args, **kwargs)
-        return side_effect
-
-    @tests_db.run_with('mongodb')
-    def test_mongo_cursor_next(self):
-        expected_first_sample_timestamp = datetime.datetime(2012, 7, 2, 10, 39)
-        raise_exc = [False, True]
-        method = self.conn.db.resource.find().cursor.next
-        with mock.patch('pymongo.cursor.Cursor.next',
-                        mock.Mock()) as mock_next:
-            mock_next.side_effect = self.create_side_effect(method, raise_exc)
-            resource = self.conn.db.resource.find().next()
-            self.assertEqual(expected_first_sample_timestamp,
-                             resource['first_sample_timestamp'])
-
-    @tests_db.run_with('mongodb')
-    def test_mongo_insert(self):
-        raise_exc = [False, True]
-        method = self.conn.db.meter.insert
-
-        with mock.patch('pymongo.collection.Collection.insert',
-                        mock.Mock(return_value=method)) as mock_insert:
-            mock_insert.side_effect = self.create_side_effect(method,
-                                                              raise_exc)
-            mock_insert.__name__ = 'insert'
-            self.create_and_store_sample(
-                timestamp=datetime.datetime(2014, 10, 15, 14, 39),
-                source='test-proxy')
-            meters = list(self.conn.db.meter.find())
-            self.assertEqual(12, len(meters))
-
-    @tests_db.run_with('mongodb')
-    def test_mongo_find_and_modify(self):
-        raise_exc = [False, True]
-        method = self.conn.db.resource.find_and_modify
-
-        with mock.patch('pymongo.collection.Collection.find_and_modify',
-                        mock.Mock()) as mock_fam:
-            mock_fam.side_effect = self.create_side_effect(method, raise_exc)
-            mock_fam.__name__ = 'find_and_modify'
-            self.create_and_store_sample(
-                timestamp=datetime.datetime(2014, 10, 15, 14, 39),
-                source='test-proxy')
-            data = self.conn.db.resource.find(
-                {'last_sample_timestamp':
-                 datetime.datetime(2014, 10, 15, 14, 39)})[0]['source']
-            self.assertEqual('test-proxy', data)
-
-    @tests_db.run_with('mongodb')
-    def test_mongo_update(self):
-        raise_exc = [False, True]
-        method = self.conn.db.resource.update
-
-        with mock.patch('pymongo.collection.Collection.update',
-                        mock.Mock()) as mock_update:
-            mock_update.side_effect = self.create_side_effect(method,
-                                                              raise_exc)
-            mock_update.__name__ = 'update'
-            self.create_and_store_sample(
-                timestamp=datetime.datetime(2014, 10, 15, 17, 39),
-                source='test-proxy-update')
-            data = self.conn.db.resource.find(
-                {'last_sample_timestamp':
-                 datetime.datetime(2014, 10, 15, 17, 39)})[0]['source']
-            self.assertEqual('test-proxy-update', data)

@@ -32,7 +32,8 @@ from ceilometer import messaging
 from ceilometer.openstack.common.gettextutils import _
 from ceilometer.openstack.common import log
 from ceilometer.openstack.common import service as os_service
-
+import sendmail
+import util_request
 
 OPTS = [
     cfg.IntOpt('evaluation_interval',
@@ -108,10 +109,7 @@ class AlarmService(object):
             return
 
         LOG.debug(_('evaluating alarm %s') % alarm.alarm_id)
-        try:
-            self.evaluators[alarm.type].obj.evaluate(alarm)
-        except Exception:
-            LOG.exception(_('Failed to evaluate alarm %s'), alarm.alarm_id)
+        self.evaluators[alarm.type].obj.evaluate(alarm)
 
     @abc.abstractmethod
     def _assigned_alarms(self):
@@ -306,6 +304,12 @@ class AlarmNotifierService(os_service.Service):
             return
 
         for action in actions:
+            alarm_info = util_request.get_alarm_info(data.get('alarm_id'))
+            if util_request.is_need_send_email(alarm_info):
+                alarm_condition = util_request.get_alarm_condition_info(alarm_info)
+                alarm_message = "Notifying alarm %s from %s to %s  because '%s')" % (alarm_condition, \
+                                      data.get("previous"), data.get("current"), data.get("reason"))  
+                sendmail.send(alarm_message)
             self._handle_action(action,
                                 data.get('alarm_id'),
                                 data.get('previous'),

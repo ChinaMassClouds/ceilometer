@@ -32,8 +32,9 @@ class CPUPollster(plugin.ComputePollster):
     def get_samples(self, manager, cache, resources):
         for instance in resources:
             LOG.debug(_('checking instance %s'), instance.id)
+            instance_name = util.instance_name(instance)
             try:
-                cpu_info = manager.inspector.inspect_cpus(instance)
+                cpu_info = manager.inspector.inspect_cpus(instance_name)
                 LOG.debug(_("CPUTIME USAGE: %(instance)s %(time)d"),
                           {'instance': instance.__dict__,
                            'time': cpu_info.time})

@@ -17,7 +17,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 from oslo.utils import timeutils
-
+import datetime
 from ceilometer.compute import util as compute_util
 from ceilometer import sample
 
@@ -87,7 +87,7 @@ def make_sample_from_instance(instance, name, type, unit, volume,
         user_id=instance.user_id,
         project_id=instance.tenant_id,
         resource_id=resource_id or instance.id,
-        timestamp=timeutils.isotime(),
+        timestamp=datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%f'),
         resource_metadata=resource_metadata,
     )
 

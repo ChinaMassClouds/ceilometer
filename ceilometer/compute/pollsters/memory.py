@@ -39,7 +39,7 @@ class MemoryUsagePollster(plugin.ComputePollster):
                     instance,
                     name='memory.usage',
                     type=sample.TYPE_GAUGE,
-                    unit='MB',
+                    unit='%',
                     volume=memory_info.usage,
                 )
             except virt_inspector.InstanceNotFoundException as err:

@@ -179,20 +179,26 @@ class ConnectionPool(object):
 
     @staticmethod
     def _mongo_connect(url):
-        try:
-            if cfg.CONF.database.mongodb_replica_set:
-                client = MongoProxy(
-                    pymongo.MongoReplicaSetClient(
-                        url,
-                        replicaSet=cfg.CONF.database.mongodb_replica_set))
+        max_retries = cfg.CONF.database.max_retries
+        retry_interval = cfg.CONF.database.retry_interval
+        attempts = 0
+        while True:
+            try:
+                client = pymongo.MongoClient(url, safe=True)
+            except pymongo.errors.ConnectionFailure as e:
+                if 0 <= max_retries <= attempts:
+                    LOG.error(_('Unable to connect to the database after '
+                                '%(retries)d retries. Giving up.') %
+                              {'retries': max_retries})
+                    raise
+                LOG.warn(_('Unable to connect to the database server: '
+                           '%(errmsg)s. Trying again in %(retry_interval)d '
+                           'seconds.') %
+                         {'errmsg': e, 'retry_interval': retry_interval})
+                attempts += 1
+                time.sleep(retry_interval)
             else:
-                client = MongoProxy(
-                    pymongo.MongoClient(url, safe=True))
-            return client
-        except pymongo.errors.ConnectionFailure as e:
-            LOG.warn(_('Unable to connect to the database server: '
-                       '%(errmsg)s.') % {'errmsg': e})
-            raise
+                return client
 
 
 class QueryTransformer(object):
@@ -315,100 +321,3 @@ class QueryTransformer(object):
             return self._handle_not_op(negated_tree)
 
         return self._handle_simple_op(operator_node, nodes)
-
-
-def safe_mongo_call(call):
-    def closure(*args, **kwargs):
-        max_retries = cfg.CONF.database.max_retries
-        retry_interval = cfg.CONF.database.retry_interval
-        attempts = 0
-        while True:
-            try:
-                return call(*args, **kwargs)
-            except pymongo.errors.AutoReconnect as err:
-                if 0 <= max_retries <= attempts:
-                    LOG.error(_('Unable to reconnect to the primary mongodb '
-                                'after %(retries)d retries. Giving up.') %
-                              {'retries': max_retries})
-                    raise
-                LOG.warn(_('Unable to reconnect to the primary mongodb: '
-                           '%(errmsg)s. Trying again in %(retry_interval)d '
-                           'seconds.') %
-                         {'errmsg': err, 'retry_interval': retry_interval})
-                attempts += 1
-                time.sleep(retry_interval)
-    return closure
-
-
-class MongoConn(object):
-    def __init__(self, method):
-        self.method = method
-
-    @safe_mongo_call
-    def __call__(self, *args, **kwargs):
-        return self.method(*args, **kwargs)
-
-MONGO_METHODS = set([typ for typ in dir(pymongo.collection.Collection)
-                     if not typ.startswith('_')])
-MONGO_METHODS.update(set([typ for typ in dir(pymongo.MongoClient)
-                          if not typ.startswith('_')]))
-MONGO_METHODS.update(set([typ for typ in dir(pymongo)
-                          if not typ.startswith('_')]))
-
-
-class MongoProxy(object):
-    def __init__(self, conn):
-        self.conn = conn
-
-    def __getitem__(self, item):
-        """Create and return proxy around the method in the connection.
-
-        :param item: name of the connection
-        """
-        return MongoProxy(self.conn[item])
-
-    def find(self, *args, **kwargs):
-        # We need this modifying method to return a CursorProxy object so that
-        # we can handle the Cursor next function to catch the AutoReconnect
-        # exception.
-        return CursorProxy(self.conn.find(*args, **kwargs))
-
-    def __getattr__(self, item):
-        """Wrap MongoDB connection.
-
-        If item is the name of an executable method, for example find or
-        insert, wrap this method in the MongoConn.
-        Else wrap getting attribute with MongoProxy.
-        """
-        if item == 'name':
-            return getattr(self.conn, item)
-        if item in MONGO_METHODS:
-            return MongoConn(getattr(self.conn, item))
-        return MongoProxy(getattr(self.conn, item))
-
-    def __call__(self, *args, **kwargs):
-        return self.conn(*args, **kwargs)
-
-
-class CursorProxy(pymongo.cursor.Cursor):
-    def __init__(self, cursor):
-        self.cursor = cursor
-
-    def __getitem__(self, item):
-        return self.cursor[item]
-
-    @safe_mongo_call
-    def next(self):
-        """Wrap Cursor next method.
-
-        This method will be executed before each Cursor next method call.
-        """
-        try:
-            save_cursor = self.cursor.clone()
-            return self.cursor.next()
-        except pymongo.errors.AutoReconnect:
-            self.cursor = save_cursor
-            raise
-
-    def __getattr__(self, item):
-        return getattr(self.cursor, item)

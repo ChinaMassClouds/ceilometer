@@ -20,6 +20,7 @@
 import abc
 import itertools
 import operator
+import pymongo
 
 from oslo.config import cfg
 import oslo.messaging
@@ -33,6 +34,8 @@ from ceilometer.openstack.common import log
 from ceilometer import publisher
 from ceilometer.publisher import utils
 
+from pysnmp.entity.rfc3413.oneliner import cmdgen
+from pysnmp.proto.rfc1902 import ObjectName
 
 LOG = log.getLogger(__name__)
 
@@ -93,6 +96,7 @@ class MessagingPublisher(publisher.PublisherBase):
 
     def __init__(self, parsed_url):
         options = urlparse.parse_qs(parsed_url.query)
+
         # the values of the option is a list of url params values
         # only take care of the latest one if the option
         # is provided more than once
@@ -116,6 +120,32 @@ class MessagingPublisher(publisher.PublisherBase):
                      % self.policy)
             self.policy = 'default'
 
+    def setSample(self,sample):
+      
+        query = CustomSnmp(cmdgen.CommandGenerator()) 
+        name = sample.name
+        if name =="hardware.memory.used":
+           try:          
+             total = query.getValue("hardware.memory.total",sample.resource_id)
+             used =  query.getValue(name,sample.resource_id)
+             sample.volume = used / (total*1.0)*100
+             return  sample
+           except Exception ,e :
+             return None
+
+        elif name == "hardware.disk.size.used":
+             try:
+               list_ip = sample.resource_id.split(".")[0:4]
+               ip = list_ip[0]+"."+list_ip[1]+"."+list_ip[2]+"."+list_ip[3]
+               total = query.getValue("hardware.disk.size.total",ip)
+               used =  query.getValue(name,ip)
+               sample.volume = used / (total*1.0)*100
+               return sample
+             except Exception ,e :
+               return None
+       
+        return sample
+
     def publish_samples(self, context, samples):
         """Publish samples on RPC.
 
@@ -123,12 +153,13 @@ class MessagingPublisher(publisher.PublisherBase):
         :param samples: Samples from pipeline after transformation.
 
         """
-
+        
         meters = [
+            
             utils.meter_message_from_counter(
-                sample,
+                self.setSample(sample),
                 cfg.CONF.publisher.metering_secret)
-            for sample in samples
+            for sample in samples 
         ]
 
         topic = cfg.CONF.publisher_rpc.metering_topic
@@ -234,3 +265,38 @@ class NotifierPublisher(MessagingPublisher):
     def _send(self, context, event_type, meters):
         self.notifier.sample(context.to_dict(), event_type=event_type,
                              payload=meters)
+
+
+
+class CustomSnmp(object):
+
+     def __init__(self,comm_handle):
+          self._comm = comm_handle
+          self.mapping ={
+              "hardware.memory.used":"1.3.6.1.4.1.2021.4.6.0",
+              "hardware.memory.total":"1.3.6.1.4.1.2021.4.5.0",
+
+              "hardware.disk.size.used":"1.3.6.1.4.1.2021.9.1.8.2",
+              "hardware.disk.size.total":"1.3.6.1.4.1.2021.9.1.6.2",
+              }
+
+     def createAuthData(self,community='public'):
+         return cmdgen.CommunityData(community)
+
+     def createOidObject(self,name):
+          oid =  self.mapping[name]
+          return ObjectName(oid)
+
+     def createTransport(self,host,port=161):
+         return cmdgen.UdpTransportTarget((host,port))
+
+
+     def getValue(self,name,host,community='public',port=161):
+         authdata =  self.createAuthData(community)
+         transport = self.createTransport(host,port)
+         oid = self.createOidObject(name)
+
+         data =  self._comm.getCmd(authdata,transport,oid,lookupValuses=True)
+         return  data[3][0][1]._value
+
+

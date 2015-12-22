@@ -215,7 +215,7 @@ class TestNetPollsterCache(base.TestPollsterBase):
         pollster = factory()
         cache = {
             pollster.CACHE_KEY_VNIC: {
-                self.instance.id: vnics,
+                self.instance.name: vnics,
             },
         }
         samples = list(pollster.get_samples(mgr, cache, [self.instance]))

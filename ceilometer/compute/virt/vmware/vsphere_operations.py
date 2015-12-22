@@ -18,7 +18,8 @@ from oslo.vmware import vim_util
 
 PERF_MANAGER_TYPE = "PerformanceManager"
 PERF_COUNTER_PROPERTY = "perfCounter"
-VM_INSTANCE_ID_PROPERTY = 'config.extraConfig["nvp.vm-uuid"].value'
+#VM_INSTANCE_ID_PROPERTY = 'config.extraConfig["nvp.vm-uuid"].value'
+VM_INSTANCE_ID_PROPERTY = 'config.instanceUuid'
 
 # ESXi Servers sample performance data every 20 seconds. 20-second interval
 # data is called instance data or real-time data. To retrieve instance data,
@@ -206,8 +207,7 @@ class VsphereOperations(object):
         query_spec.intervalId = VC_REAL_TIME_SAMPLING_INTERVAL
         # We query all samples which are applicable over the specified duration
         samples_cnt = (int(duration / VC_REAL_TIME_SAMPLING_INTERVAL)
-                       if duration and
-                       duration >= VC_REAL_TIME_SAMPLING_INTERVAL else 1)
+                       if duration else 1)
         query_spec.maxSample = samples_cnt
 
         perf_manager = session.vim.service_content.perfManager
